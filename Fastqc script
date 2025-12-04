@@ -1,0 +1,24 @@
+#!/bin/bash
+# ---------------------------------------------
+# 01_fastqc.sh
+# Run FastQC on all FASTQ files in the directory
+# WSU Grid (interactive job)
+# ---------------------------------------------
+
+# Exit if any command fails
+set -e
+
+echo "Running FastQC..."
+
+# Load module
+module load fastqc
+
+# Make output directory if not exists
+OUTDIR="QC"
+mkdir -p ${OUTDIR}
+
+# Run FastQC on all FASTQs
+fastqc -t 8 -o ${OUTDIR} *.fastq.gz
+
+echo "FastQC completed successfully."
+echo "Results saved in: ${OUTDIR}/"
