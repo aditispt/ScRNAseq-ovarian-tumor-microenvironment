@@ -1,0 +1,46 @@
+scRNA-seq Processing Pipeline (WSU Grid – Nov 2025)
+Project Overview
+
+This repository documents the complete preprocessing pipeline for mouse single-cell RNA sequencing (scRNA-seq) data generated in November 2025.
+
+It covers:
+
+FASTQ transfer & organization
+
+QC with FastQC
+
+Alignment & count matrix generation using Cell Ranger 7.0.0
+
+HPC job submission on WSU Grid
+
+Reproducible scripts for future runs
+
+This repository is designed for full transparency and reproducibility of the computational workflow.
+
+Directory Structure
+/wsu/home/hc/hc27/hc2799/scrnaseq_nov2025/
+│
+├── 855_S1_*.fastq.gz
+├── 857_S2_*.fastq.gz
+├── S1_S3_*.fastq.gz
+├── S3_S4_*.fastq.gz
+└── QC/                      # FastQC output
+
+
+Dataset includes four mouse scRNA-seq samples:
+
+855_S1
+
+857_S2
+
+S1_S3
+
+S3_S4
+
+Each sample contains:
+
+Paired-end reads: R1, R2
+
+Sample indices: I1, I2
+
+Two lanes (L001, L002)
