@@ -1,46 +1,156 @@
-scRNA-seq Processing Pipeline (WSU Grid – Nov 2025)
-Project Overview
+# scRNA-seq Processing Pipeline (WSU Grid – Nov 2025)
 
-This repository documents the complete preprocessing pipeline for mouse single-cell RNA sequencing (scRNA-seq) data generated in November 2025.
+This repository documents the complete preprocessing workflow for a mouse single-cell RNA sequencing (scRNA-seq) dataset processed on the Wayne State University Grid in November 2025.
 
-It covers:
+It includes:
 
-FASTQ transfer & organization
+- FASTQ transfer and organization  
+- Quality control with FastQC  
+- Alignment and quantification using Cell Ranger 7.0.0  
+- HPC job submission instructions  
+- Fully reproducible commands and scripts  
 
-QC with FastQC
+This README ensures full transparency and reproducibility of the computational pipeline.
 
-Alignment & count matrix generation using Cell Ranger 7.0.0
+---
 
-HPC job submission on WSU Grid
+##Directory Structure
 
-Reproducible scripts for future runs
-
-This repository is designed for full transparency and reproducibility of the computational workflow.
-
-Directory Structure
 /wsu/home/hc/hc27/hc2799/scrnaseq_nov2025/
 │
-├── 855_S1_*.fastq.gz
-├── 857_S2_*.fastq.gz
-├── S1_S3_*.fastq.gz
-├── S3_S4_*.fastq.gz
-└── QC/                      # FastQC output
+├── 855_S1_.fastq.gz
+├── 857_S2_.fastq.gz
+├── S1_S3_.fastq.gz
+├── S3_S4_.fastq.gz
+└── QC/ # FastQC HTML reports
 
+Four mouse samples:
 
-Dataset includes four mouse scRNA-seq samples:
+- `855_S1`
+- `857_S2`
+- `S1_S3`
+- `S3_S4`
 
-855_S1
+Each includes R1, R2, I1, I2 files across two lanes (L001, L002).
 
-857_S2
+---
 
-S1_S3
+## 1. FASTQ Transfer via Globus
 
-S3_S4
+FASTQs were delivered through Globus to endpoint: wsugrid#globus
 
-Each sample contains:
+Then transferred into:
+/wsu/home/hc/hc27/hc2799/scrnaseq_nov2025
 
-Paired-end reads: R1, R2
+---
 
-Sample indices: I1, I2
+##2. Quality Control with FastQC
 
-Two lanes (L001, L002)
+Start a lightweight interactive node: idebug
+Load FastQC: module load fastqc
+Create QC directory: mkdir QC
+Run QC: fastqc -t 8 -o QC *.fastq.gz
+QC results indicated high read quality and no need for trimming.
+
+3. Identify Installed Cell Ranger & Reference
+Available versions: /wsu/el7/pre-compiled/cellranger/7.0.0/
+Cell Ranger 7.0.0 executable:
+/wsu/el7/pre-compiled/cellranger/7.0.0/cellranger-7.0.0/cellranger
+Mouse reference (mm10):
+
+/wsu/el7/pre-compiled/cellranger/7.0.0/cellranger-7.0.0/refdata-gex-mm10-2020-A
+
+4. Cell Ranger Batch Script (Processes All 4 Samples)
+Create the file:
+nano cellranger_all_samples.slurm
+
+Paste:
+#!/bin/bash
+#SBATCH --job-name=mouse_scRNAseq
+#SBATCH --output=cellranger_%A_%a.out
+#SBATCH --error=cellranger_%A_%a.err
+#SBATCH --time=48:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH -q primary
+
+echo "Starting Cell Ranger job on: $(date)"
+echo "Running on node: $(hostname)"
+
+module load cellranger/7.0.0
+
+FASTQ_DIR="/wsu/home/hc/hc27/hc2799/scrnaseq_nov2025"
+REF="/wsu/el7/pre-compiled/cellranger/7.0.0/cellranger-7.0.0/refdata-gex-mm10-2020-A"
+
+samples=(855_S1 857_S2 S1_S3 S3_S4)
+
+for SAMPLE in "${samples[@]}"; do
+    echo "--------------------------------------------"
+    echo "Processing sample: $SAMPLE"
+    echo "Starting at: $(date)"
+    echo "--------------------------------------------"
+
+    cellranger count \
+        --id=${SAMPLE} \
+        --transcriptome=${REF} \
+        --fastqs=${FASTQ_DIR} \
+        --sample=${SAMPLE} \
+        --localcores=16 \
+        --localmem=120 \
+        --expect-cells=6000
+
+    echo "Finished sample: $SAMPLE at $(date)"
+done
+
+echo "All samples finished at: $(date)"
+Save and exit:
+
+Ctrl+O, Enter
+
+Ctrl+X
+
+5. Submit the Job
+sbatch cellranger_all_samples.slurm
+Monitor:
+squeue -u hc2799
+
+6. Output Files
+Each sample produces a folder:
+855_S1/
+857_S2/
+S1_S3/
+S3_S4/
+Inside:
+outs/
+├── filtered_feature_bc_matrix/
+├── raw_feature_bc_matrix/
+├── web_summary.html
+└── metrics_summary.csv
+These directories are ready for Seurat.
+
+7. Next Step: Create Seurat Objects
+A downstream R script will be added for:
+--Loading matrices
+--QC & filtering
+--Normalization
+--Clustering
+--Dimensional reduction
+--Marker discovery
+
+8. HPC Best Practices (WSU Grid)
+Do not run heavy jobs on the warrior login node.
+Use sbatch for all real compute tasks.
+Use idebug only for lightweight tasks like QC.
+Always request CPU, memory, and time explicitly.
+Store large outputs in your home or group folder.
+
+9. Software Versions
+Tool	Version
+Cell Ranger	7.0.0
+Reference	mm10-2020-A
+FastQC	0.11.x
+OS	CentOS / OpenHPC, WSU Grid
+
+Maintainer
+Aditi Singh
+Directory: /wsu/home/hc/hc27/hc2799/scrnaseq_nov2025
