@@ -17,21 +17,20 @@ This README ensures full transparency and reproducibility of the computational p
 ##Directory Structure
 
 /wsu/home/hc/hc27/hc2799/scrnaseq_nov2025/
+ScRNAseq-ovarian-tumor-microenvironment/
 │
-├── 855_S1_.fastq.gz
-├── 857_S2_.fastq.gz
-├── S1_S3_.fastq.gz
-├── S3_S4_.fastq.gz
-└── QC/ # FastQC HTML reports
-
-Four mouse samples:
-
-- `855_S1`
-- `857_S2`
-- `S1_S3`
-- `S3_S4`
-
-Each includes R1, R2, I1, I2 files across two lanes (L001, L002).
+├── README.md
+├── scripts/
+│   ├── 01_fastqc.sh
+│   ├── 02_cellranger_all_samples.slurm
+│   ├── 03_make_seurat_object.R
+│   ├── 04_seurat_qc_and_clustering.R
+│   └── 05_downstream_analysis.R
+│
+└── results/
+    ├── qc_reports/
+    ├── cellranger_out/
+    └── figures/
 
 ---
 
