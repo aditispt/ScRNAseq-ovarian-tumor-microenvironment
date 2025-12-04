@@ -1,0 +1,61 @@
+#!/bin/bash
+#SBATCH --job-name=cellranger_all
+#SBATCH --output=cellranger_all_%j.out
+#SBATCH --error=cellranger_all_%j.err
+#SBATCH --partition=general-compute
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --time=48:00:00
+
+# ---------------------------------------------
+# 02_cellranger_all_samples.slurm
+# Run Cell Ranger count for all samples
+# WSU Grid
+# ---------------------------------------------
+
+set -e
+
+echo "Job started on $(date)"
+echo "Running Cell Ranger 7.0.0"
+
+# Load Cell Ranger
+module load cellranger/7.0.0
+
+# Path to reference
+REF="/wsu/el7/pre-compiled/cellranger/7.0.0/refdata-gex-mm10-2020-A"
+
+# Output directory
+OUTDIR="cellranger_out"
+mkdir -p ${OUTDIR}
+
+# Define sample list
+declare -a SAMPLES=("855_S1" "857_S2" "S1_S3" "S3_S4")
+
+# Loop through samples
+for SAMPLE in "${SAMPLES[@]}"; do
+    echo "--------------------------------------------"
+    echo "Processing: ${SAMPLE}"
+    echo "--------------------------------------------"
+
+    FASTQS=$(ls ${SAMPLE}_*.fastq.gz | head -n 1 | sed 's/\/[^\/]*$//')
+
+    cellranger count \
+        --id=${SAMPLE} \
+        --fastqs=. \
+        --sample=${SAMPLE} \
+        --transcriptome=${REF} \
+        --localcores=16 \
+        --localmem=64
+
+    mv ${SAMPLE} ${OUTDIR}/
+done
+
+echo "Cell Ranger processing completed on $(date)"
+
+
+How to Run Alignment
+
+From warrior login node:
+cd ~/scrnaseq_nov2025/scripts
+sbatch 02_cellranger_all_samples.slurm
