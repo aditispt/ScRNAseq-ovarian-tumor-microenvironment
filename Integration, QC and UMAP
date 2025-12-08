@@ -1,0 +1,116 @@
+library(Seurat)
+library(dplyr)
+
+#-------------------------------------------------------------
+# 1 — Define directories and sample names
+#-------------------------------------------------------------
+base_dir <- "/Users/aditi/Desktop/desktop folders/ScRNAseq_Nov2025/Cell Ranger outs/filtered"
+samples <- c("855", "857", "S1", "S3")
+
+obj_list <- list()
+
+#-------------------------------------------------------------
+# 2 — Load each sample + create Seurat object
+#-------------------------------------------------------------
+for (sample in samples) {
+  path <- file.path(base_dir, sample)
+  message("Loading sample: ", sample)
+  
+  counts <- Read10X(path)
+  seurat_obj <- CreateSeuratObject(counts = counts, project = sample, min.cells = 3)
+  
+  seurat_obj$sample <- sample
+  obj_list[[sample]] <- seurat_obj
+}
+
+#-------------------------------------------------------------
+# 3 — QC BEFORE INTEGRATION
+#-------------------------------------------------------------
+for (i in 1:length(obj_list)) {
+  obj <- obj_list[[i]]
+  
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+  
+  obj <- subset(
+    obj,
+    subset = nFeature_RNA > 200 &
+      nFeature_RNA < 2500 &
+      percent.mt < 5
+  )
+  
+  obj_list[[i]] <- obj
+}
+
+#-------------------------------------------------------------
+# 4 — SCTransform (separately for each sample)
+#-------------------------------------------------------------
+for (i in 1:length(obj_list)) {
+  message("SCTransforming sample ", names(obj_list)[i])
+  obj_list[[i]] <- SCTransform(obj_list[[i]], verbose = TRUE)
+}
+
+#-------------------------------------------------------------
+# 5 — Integration features + anchors
+#-------------------------------------------------------------
+features <- SelectIntegrationFeatures(obj_list, nfeatures = 3000)
+obj_list <- PrepSCTIntegration(obj_list, anchor.features = features)
+
+anchors <- FindIntegrationAnchors(
+  object.list = obj_list,
+  normalization.method = "SCT",
+  anchor.features = features
+)
+
+#-------------------------------------------------------------
+# 6 — Integrate data
+#-------------------------------------------------------------
+integrated <- IntegrateData(
+  anchorset = anchors,
+  normalization.method = "SCT"
+)
+
+#-------------------------------------------------------------
+# 7 — PCA, UMAP, neighbors, clustering
+#-------------------------------------------------------------
+DefaultAssay(integrated) <- "integrated"
+
+integrated <- RunPCA(integrated)
+ElbowPlot(integrated, ndims = 20)  # visually choose dims
+
+dims_use <- 1:12  # based on elbow plot
+
+integrated <- RunUMAP(integrated, dims = dims_use)
+integrated <- FindNeighbors(integrated, dims = dims_use)
+integrated <- FindClusters(integrated, resolution = 0.5)
+
+# Plots
+DimPlot(integrated, reduction = "umap", group.by = "sample")
+DimPlot(integrated, reduction = "umap", label = TRUE)
+
+#-------------------------------------------------------------
+# 8 — Save integrated object (IMPORTANT!)
+#-------------------------------------------------------------
+saveRDS(integrated, file = "integrated_scnaseq_nov2025.rds")
+
+#-------------------------------------------------------------
+# 9 — Differential expression using SCT assay
+#-------------------------------------------------------------
+DefaultAssay(integrated) <- "SCT"
+integrated <- PrepSCTFindMarkers(integrated)
+
+markers_all <- FindAllMarkers(
+  integrated,
+  only.pos = TRUE,
+  min.pct = 0.25,
+  logfc.threshold = 0.25
+)
+
+#-------------------------------------------------------------
+# 10 — Export top 5 markers per cluster
+#-------------------------------------------------------------
+top5 <- markers_all %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 5)
+
+write.csv(top5, "Top5_DEG_markers_all_clusters.csv", row.names = FALSE)
+
