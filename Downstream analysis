@@ -1,0 +1,207 @@
+#Only these samples pass QC, and rest were excluded from the final downstream analysis
+
+#-------------------------------------------------------------
+# 1 — Define directories and KEEP ONLY omentum samples
+#-------------------------------------------------------------
+base_dir <- "/Users/aditi/Desktop/desktop folders/ScRNAseq_Nov2025/Cell Ranger outs/filtered"
+samples <- c("855", "857")   # <-- ONLY THESE TWO
+
+obj_list <- list()
+
+#-------------------------------------------------------------
+# 2 — Load samples
+#-------------------------------------------------------------
+for (sample in samples) {
+  path <- file.path(base_dir, sample)
+  message("Loading sample: ", sample)
+  
+  counts <- Read10X(path)
+  seurat_obj <- CreateSeuratObject(counts = counts, project = sample, min.cells = 3)
+  seurat_obj$sample <- sample
+  obj_list[[sample]] <- seurat_obj
+}
+
+#-------------------------------------------------------------
+# 3 — QC
+#-------------------------------------------------------------
+for (i in 1:length(obj_list)) {
+  obj <- obj_list[[i]]
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+  
+  obj <- subset(obj, nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+  obj_list[[i]] <- obj
+}
+
+#-------------------------------------------------------------
+# 4 — SCTransform with memory-saving mode
+#-------------------------------------------------------------
+for (i in 1:length(obj_list)) {
+  message("SCTransforming ", names(obj_list)[i])
+  obj_list[[i]] <- SCTransform(
+    obj_list[[i]],
+    conserve.memory = TRUE,
+    variable.features.n = 3000,
+    vst.flavor = "v1",
+    verbose = TRUE
+  )
+}
+
+#-------------------------------------------------------------
+# 5 — Integration
+#-------------------------------------------------------------
+features <- SelectIntegrationFeatures(obj_list, nfeatures = 3000)
+obj_list <- PrepSCTIntegration(obj_list, anchor.features = features)
+
+anchors <- FindIntegrationAnchors(
+  object.list = obj_list,
+  normalization.method = "SCT",
+  anchor.features = features
+)
+
+integrated <- IntegrateData(
+  anchorset = anchors,
+  normalization.method = "SCT"
+)
+
+#-------------------------------------------------------------
+# 6 — Dimensionality Reduction: PCA, UMAP, Clustering
+#-------------------------------------------------------------
+DefaultAssay(integrated) <- "integrated"
+
+# PCA
+integrated <- RunPCA(integrated)
+ElbowPlot(integrated, ndims = 20)
+
+# UMAP
+integrated <- RunUMAP(integrated, dims = 1:12)
+
+# Neighbors + Clusters
+integrated <- FindNeighbors(integrated, dims = 1:12)
+integrated <- FindClusters(integrated, resolution = 0.5)
+
+# UMAP plots
+DimPlot(integrated, reduction = "umap")
+DimPlot(integrated, reduction = "umap", group.by = "sample")
+
+#-------------------------------------------------------------
+# 7 — Save integrated object (important!)
+#-------------------------------------------------------------
+saveRDS(integrated, "integrated_855_857_only.rds")
+
+integrated <- readRDS("integrated_855_857_only.rds")
+
+#-------------------------------------------------------------
+# 8 — Differential Expression (SCT-based markers)
+#-------------------------------------------------------------
+DefaultAssay(integrated) <- "SCT"
+
+integrated <- PrepSCTFindMarkers(integrated)
+
+markers_all <- FindAllMarkers(
+  integrated,
+  only.pos = TRUE,
+  min.pct = 0.25,
+  logfc.threshold = 0.25
+)
+
+#-------------------------------------------------------------
+# 9 — Export top 5 markers per cluster
+#-------------------------------------------------------------
+library(dplyr)
+
+top5 <- markers_all %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 5)
+
+write.csv(top5, "Top5_markers_855_857_only.csv", row.names = FALSE)
+
+# Optional: view table
+top5
+
+new_names <- c(
+  "0"  = "B_cells_1",
+  "1"  = "Macrophage_1",
+  "2"  = "NK_Cells",
+  "3"  = "Macrophage_2",
+  "4"  = "Stromal_Fibroblasts",
+  "5"  = "T_cells_1",
+  "6"  = "B_cells_2",
+  "7"  = "B_cells_3",
+  "8"  = "Macrophage_3",      # <-- updated from DC_1
+  "9"  = "Neuroepithelial",
+  "10" = "Epithelial",
+  "11" = "MDSC",
+  "12" = "DC_1",
+  "13" = "Plasma_cells",
+  "14" = "DC_2",
+  "15" = "T_cells_2"
+)
+
+
+integrated <- RenameIdents(integrated, new_names)
+DimPlot(integrated, reduction = "umap", label = TRUE, repel = TRUE)
+
+DimPlot(integrated, reduction = "umap", split.by = "sample", label = TRUE, repel = TRUE, ncol = 2)
+
+##Second layer of annotation with classical markers
+DotPlot(integrated,
+        features = list(
+          Macrophages = c("Adgre1","Cd68","Cd14","Lyz2","Mrc1","Marco","Retnla"),
+          DCs = c("Itgax","Itgam","Xcr1","Clec9a","Cd209a","Clec10a","Flt3","Zbtb46"),
+          T_cells = c("Cd3d","Cd3e","Cd3g","Cd4","Cd8a","Cd8b1","Trbc1","Trbc2"),
+          NK = c("Nkg7","Klrc1","Klrc2","Klrb1c","Gzmb","Prf1"),
+          B_cells = c("Cd79a","Cd79b","Ms4a1","Cd19","Ighm","Jchain"),
+          Fibroblast = c("Col1a1","Col1a2","Dpt","Lum","Pdgfra"),
+          Epithelial = c("Krt8","Krt18","Krt14","Krt5"),
+          MDSC = c("S100a8","S100a9","Il1f9","Cxcr2")
+        )) +
+  RotatedAxis()
+
+#-------------------------------------------------------------
+# 10 — Marker genes for High (855) vs SNAlow (857)
+#-------------------------------------------------------------
+DefaultAssay(integrated) <- "RNA"
+integrated <- NormalizeData(integrated)
+integrated <- FindVariableFeatures(integrated)
+
+DefaultAssay(integrated) <- "RNA"
+
+deg_list <- list()
+
+for (cl in clusters) {
+  message("Processing cluster: ", cl)
+  
+  sub <- subset(integrated, idents = cl)
+  
+  if (length(unique(sub$sample)) < 2) {
+    message("Skipping ", cl, " because one sample is missing.")
+    next
+  }
+  
+  deg <- FindMarkers(
+    sub,
+    ident.1 = "855",
+    ident.2 = "857",
+    group.by = "sample",
+    only.pos = FALSE,
+    test.use = "wilcox",
+    logfc.threshold = 0.25,
+    min.pct = 0.1
+  )
+  
+  # ADD GENE COLUMN  
+  deg$gene <- rownames(deg)
+  deg <- deg[, c("gene", setdiff(colnames(deg), "gene"))]
+  
+  # Add cluster label
+  deg$cluster <- cl
+  
+  # Save
+  write.csv(
+    deg,
+    paste0("DEG_855_vs_857_byCluster/", cl, "_855_vs_857_DEGs.csv"),
+    row.names = FALSE
+  )
+  
+  deg_list[[cl]] <- deg
+}
