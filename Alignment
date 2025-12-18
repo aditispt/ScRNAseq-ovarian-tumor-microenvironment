@@ -1,4 +1,3 @@
-#!/bin/bash
 #SBATCH --job-name=cellranger_all
 #SBATCH --output=cellranger_all_%j.out
 #SBATCH --error=cellranger_all_%j.err
