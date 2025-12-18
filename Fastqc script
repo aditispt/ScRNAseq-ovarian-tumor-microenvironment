@@ -1,4 +1,3 @@
-#!/bin/bash
 # ---------------------------------------------
 # 01_fastqc.sh
 # Run FastQC on all FASTQ files in the directory
