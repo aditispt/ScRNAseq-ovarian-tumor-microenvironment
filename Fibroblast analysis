@@ -55,3 +55,32 @@ stromal_markers <- FindAllMarkers(
 ## Save processed object and markers
 saveRDS(stromal, "stromal_processed_seurat.rds")
 saveRDS(stromal_markers, "stromal_FindAllMarkers.rds")
+
+## ===============================
+## Published Fibroblast Programs
+## PMID: 32505533 (mouse gene symbols)
+## ===============================
+
+library(dplyr)
+
+fibro_cluster_genes <- stromal_markers %>%
+  filter(
+    p_val_adj < 0.05,
+    avg_log2FC > 0.25
+  ) %>%
+  group_by(cluster) %>%
+  summarise(genes = list(unique(gene))) %>%
+  deframe()
+
+names(fibro_cluster_genes)
+sapply(fibro_cluster_genes, length)
+
+published_fibro_modules_mouse <- list(
+  Vascular_Development = c("Il6", "Rgs5", "Gja4", "Mcam", "Myh11"),
+  ECM = c("Postn", "Cthrc1", "Col6a3", "Fn1", "Mmp14", "Mmp11"),
+  Complement = c("Cst1", "Igf1", "Fbln1", "C3", "C7"),
+  Antigen_Presentation = c("Cxcl12", "Ccl21", "H2-Aa", "H2-Ab1", "Cd74"),
+  EMT = c("Slpi", "Krt19", "Krt8", "Saa1"),
+  Lipid_Processing = c("Fabp1", "Apoa2", "Gpx3", "Frzb", "Fabp4")
+)
+
