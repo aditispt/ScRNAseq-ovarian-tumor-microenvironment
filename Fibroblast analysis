@@ -1,5 +1,9 @@
-##Subset and work on Stromal_Fibroblasts
+## ===============================
+## Subset Stromal Fibroblasts
+## ===============================
+
 levels(Idents(integrated))
+
 stromal <- subset(
   x = integrated,
   idents = "Stromal_Fibroblasts"
@@ -7,212 +11,31 @@ stromal <- subset(
 
 DefaultAssay(stromal) <- "RNA"
 
+## Standard preprocessing
 stromal <- NormalizeData(stromal, verbose = FALSE)
 stromal <- FindVariableFeatures(stromal, nfeatures = 2000, verbose = FALSE)
 stromal <- ScaleData(stromal, verbose = FALSE)
 stromal <- RunPCA(stromal, npcs = 30, verbose = FALSE)
+
 ElbowPlot(stromal, ndims = 30)
 
+## Clustering + UMAP
 stromal <- FindNeighbors(stromal, dims = 1:10)
 stromal <- FindClusters(stromal, resolution = 0.5)
 
-DimPlot(stromal, label = TRUE, repel = TRUE)
 stromal <- RunUMAP(
   stromal,
   dims = 1:10,
   reduction = "pca"
 )
 
+## Visualization
+DimPlot(stromal, label = TRUE, repel = TRUE)
 DimPlot(
   stromal,
   reduction = "umap",
+  split.by = "sample",
   label = TRUE,
-  repel = TRUE
+  repel = TRUE,
+  ncol = 2
 )
-
-DimPlot(stromal, reduction = "umap", split.by = "sample", label = TRUE, repel = TRUE, ncol = 2)
-
-stromal_markers <- FindAllMarkers(
-  object = stromal,
-  only.pos = TRUE,
-  min.pct = 0.25,
-  logfc.threshold = 0.25,
-  test.use = "wilcox"
-)
-
-saveRDS(
-  stromal,
-  file = "stromal_processed_seurat.rds"
-)
-
-saveRDS(stromal_markers, "stromal_FindAllMarkers.rds")
-
-
-##Fibroblast Markers from paper # PMID: 32505533
-
-library(dplyr)
-
-fibro_cluster_genes <- stromal_markers %>%
-  filter(
-    p_val_adj < 0.05,
-    avg_log2FC > 0.25
-  ) %>%
-  group_by(cluster) %>%
-  summarise(genes = list(unique(gene))) %>%
-  deframe()
-names(fibro_cluster_genes)      # should be 0–9
-sapply(fibro_cluster_genes, length)
-
-published_fibro_modules <- list(
-  Vascular_Development = c(
-    "Il6", "Rgs5", "Gja4", "Mcam", "Myh11"
-  ),
-  
-  ECM = c(
-    "Postn", "Cthrc1", "Col6a3", "Fn1", "Mmp14", "Mmp11"
-  ),
-  
-  Complement = c(
-    "Cst1", "Igf1", "Fbln1", "C3", "C7"
-  ),
-  
-  Antigen_Presentation = c(
-    "Cxcl12", "Ccl21", "H2-Aa", "H2-Ab1", "Cd74"
-  ),
-  
-  EMT = c(
-    "Slpi", "Krt19", "Krt8", "Saa1"
-  ),
-  
-  Lipid_Processing = c(
-    "Fabp1", "Apoa2", "Gpx3", "Frzb", "Fabp4"
-  )
-)
-
-
-calc_overlap_pct <- function(query_genes, reference_genes) {
-  length(intersect(query_genes, reference_genes)) /
-    length(reference_genes) * 100
-}
-
-fibro_overlap_matrix <- matrix(
-  nrow = length(fibro_cluster_genes),
-  ncol = length(published_fibro_modules)
-)
-
-rownames(fibro_overlap_matrix) <- paste0("Fibroblast_", names(fibro_cluster_genes))
-colnames(fibro_overlap_matrix) <- names(published_fibro_modules)
-
-for (cl in names(fibro_cluster_genes)) {
-  for (mod in names(published_fibro_modules)) {
-    fibro_overlap_matrix[
-      paste0("Fibroblast_", cl), mod
-    ] <- calc_overlap_pct(
-      fibro_cluster_genes[[cl]],
-      published_fibro_modules[[mod]]
-    )
-  }
-}
-
-fibro_overlap_df <- as.data.frame(fibro_overlap_matrix)
-
-saveRDS(fibro_overlap_df, "fibroblast_gene_overlap_matrix.rds")
-
-library(tidyverse)
-
-fibro_overlap_long <- fibro_overlap_df %>%
-  rownames_to_column("Cluster") %>%
-  pivot_longer(
-    cols = -Cluster,
-    names_to = "Fibroblast_State",
-    values_to = "Percent_Overlap"
-  )
-
-fibro_overlap_long$Cluster <- factor(
-  fibro_overlap_long$Cluster,
-  levels = rownames(fibro_overlap_df)
-)
-
-fibro_overlap_long$Fibroblast_State <- factor(
-  fibro_overlap_long$Fibroblast_State,
-  levels = colnames(fibro_overlap_df)
-)
-
-library(ggplot2)
-
-ggplot(fibro_overlap_long, aes(x = Fibroblast_State, y = Cluster, fill = Percent_Overlap)) +
-  geom_tile(color = "grey70", size = 0.6) +
-  geom_text(
-    aes(label = sprintf("%.1f", Percent_Overlap)),
-    size = 4,
-    color = "black"
-  ) +
-  scale_fill_gradient(
-    low = "white",
-    high = "limegreen",
-    limits = c(0, 100),
-    name = "%"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    panel.grid = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    legend.position = "right"
-  ) +
-  ggtitle("Percentage of Gene Set Overlap in Fibroblast DEGs")
-
-##SPlit by high and low
-stromal_list <- SplitObject(stromal, split.by = "sample")
-
-names(stromal_list)
-
-compute_overlap_matrix <- function(seurat_obj, published_modules) {
-  
-  DefaultAssay(seurat_obj) <- "RNA"
-  
-  markers <- FindAllMarkers(
-    seurat_obj,
-    only.pos = TRUE,
-    min.pct = 0.25,
-    logfc.threshold = 0.25
-  )
-  
-  cluster_genes <- markers %>%
-    filter(p_val_adj < 0.05) %>%
-    group_by(cluster) %>%
-    summarise(genes = list(unique(gene))) %>%
-    deframe()
-  
-  overlap_mat <- matrix(
-    nrow = length(cluster_genes),
-    ncol = length(published_modules)
-  )
-  
-  rownames(overlap_mat) <- paste0("Fibroblast_", names(cluster_genes))
-  colnames(overlap_mat) <- names(published_modules)
-  
-  for (cl in names(cluster_genes)) {
-    for (mod in names(published_modules)) {
-      overlap_mat[
-        paste0("Fibroblast_", cl), mod
-      ] <- length(
-        intersect(cluster_genes[[cl]], published_modules[[mod]])
-      ) / length(published_modules[[mod]]) * 100
-    }
-  }
-  
-  return(overlap_mat)
-}
-
-fibro_overlap_by_sample <- lapply(
-  stromal_list,
-  compute_overlap_matrix,
-  published_modules = published_fibro_modules
-)
-
-fibro_overlap_by_sample[["855"]]
-fibro_overlap_by_sample[["857"]]
-
