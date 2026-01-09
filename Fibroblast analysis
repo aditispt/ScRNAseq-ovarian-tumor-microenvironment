@@ -164,3 +164,56 @@ ggplot(
   ) +
   ggtitle("Percentage of Gene Set Overlap in Stromal Fibroblast Clusters")
 
+## ===============================
+## Sample-specific Overlap
+## ===============================
+
+stromal_list <- SplitObject(stromal, split.by = "sample")
+names(stromal_list)
+
+compute_overlap_matrix <- function(seurat_obj, published_modules) {
+
+  DefaultAssay(seurat_obj) <- "RNA"
+
+  markers <- FindAllMarkers(
+    seurat_obj,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+
+  cluster_genes <- markers %>%
+    filter(p_val_adj < 0.05) %>%
+    group_by(cluster) %>%
+    summarise(genes = list(unique(gene))) %>%
+    deframe()
+
+  overlap_mat <- matrix(
+    nrow = length(cluster_genes),
+    ncol = length(published_modules)
+  )
+
+  rownames(overlap_mat) <- paste0("Fibroblast_", names(cluster_genes))
+  colnames(overlap_mat) <- names(published_modules)
+
+  for (cl in names(cluster_genes)) {
+    for (mod in names(published_modules)) {
+      overlap_mat[
+        paste0("Fibroblast_", cl), mod
+      ] <- length(
+        intersect(cluster_genes[[cl]], published_modules[[mod]])
+      ) / length(published_modules[[mod]]) * 100
+    }
+  }
+
+  overlap_mat
+}
+
+fibro_overlap_by_sample <- lapply(
+  stromal_list,
+  compute_overlap_matrix,
+  published_modules = published_fibro_modules_mouse
+)
+
+fibro_overlap_by_sample[["855"]]
+fibro_overlap_by_sample[["857"]]
