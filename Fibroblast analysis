@@ -39,3 +39,19 @@ DimPlot(
   repel = TRUE,
   ncol = 2
 )
+
+## ===============================
+## Marker Identification
+## ===============================
+
+stromal_markers <- FindAllMarkers(
+  object = stromal,
+  only.pos = TRUE,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  test.use = "wilcox"
+)
+
+## Save processed object and markers
+saveRDS(stromal, "stromal_processed_seurat.rds")
+saveRDS(stromal_markers, "stromal_FindAllMarkers.rds")
