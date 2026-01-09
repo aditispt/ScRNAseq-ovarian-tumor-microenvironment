@@ -84,3 +84,34 @@ published_fibro_modules_mouse <- list(
   Lipid_Processing = c("Fabp1", "Apoa2", "Gpx3", "Frzb", "Fabp4")
 )
 
+## ===============================
+## Overlap Matrix (All Stromal)
+## ===============================
+
+calc_overlap_pct <- function(query_genes, reference_genes) {
+  length(intersect(query_genes, reference_genes)) /
+    length(reference_genes) * 100
+}
+
+fibro_overlap_matrix <- matrix(
+  nrow = length(fibro_cluster_genes),
+  ncol = length(published_fibro_modules_mouse)
+)
+
+rownames(fibro_overlap_matrix) <- paste0("Fibroblast_", names(fibro_cluster_genes))
+colnames(fibro_overlap_matrix) <- names(published_fibro_modules_mouse)
+
+for (cl in names(fibro_cluster_genes)) {
+  for (mod in names(published_fibro_modules_mouse)) {
+    fibro_overlap_matrix[
+      paste0("Fibroblast_", cl), mod
+    ] <- calc_overlap_pct(
+      fibro_cluster_genes[[cl]],
+      published_fibro_modules_mouse[[mod]]
+    )
+  }
+}
+
+fibro_overlap_df <- as.data.frame(fibro_overlap_matrix)
+saveRDS(fibro_overlap_df, "fibroblast_gene_overlap_matrix.rds")
+
