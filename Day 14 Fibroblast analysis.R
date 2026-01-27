@@ -1,3 +1,4 @@
+##This is just Fibroblasts subsetted # Not Fibroblasts with different clusters on UMAP.
 ##Comparing Fibroblasts to CAFs day 25
 caf_modules <- list(
   iCAF = c("Cxcl1", "Cxcl2", "Cxcl12", "Has1", "Has2", "Il6"),
